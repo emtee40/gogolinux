@@ -15,7 +15,7 @@ import subprocess
 import gog_db
 import gol_connection as site_conn
 
-version = "0.1.1"
+version = "0.1.3"
 author = "Morgawr"
 email = "morgawr@gmail.com"
 package_directory = os.path.dirname(os.path.abspath(__file__))
@@ -54,13 +54,14 @@ class GogTuxGUI:
                     "on_close_menu_activated" : gtk.main_quit,
                     "on_about_menu_activated" : self.about_menu_activated,
                     "on_undoprefsbutton_activated" : self.undo_settings,
-                    "on_undoprefsbutton_clicked" : self.undo_settings,
+#                    "on_undoprefsbutton_clicked" : self.undo_settings,
                     "on_saveprefsbutton_activated" : self.save_settings,
-                    "on_saveprefsbutton_clicked" : self.save_settings,
+#                    "on_saveprefsbutton_clicked" : self.save_settings,
                     "on_gog_tux_key_pressed" : self.key_pressed,
                     "on_installbutton_activated" : self.installbutton_activated,
                     "on_launchbutton_activated" : self.launchbutton_activated,
-                    "on_uninstallbutton_activated" : self.uninstallbutton_activated }
+                    "on_uninstallbutton_activated" : self.uninstallbutton_activated,
+                    "on_logoutmenu_activated" : self.do_logout }
         self.wTree.signal_autoconnect(signals)
         #obtain required resources
         self.window = self.wTree.get_widget("gog_tux")
@@ -69,9 +70,14 @@ class GogTuxGUI:
         #set up the lists for the games 
         self.init_lists()
         #finalize initialization
-        self.loginwindow = LoginWindow(self)
         self.load_games()
         self.acquire_settings()
+        if self.check_cookies():
+            token, key = self.obtain_cookies()
+            self.connection.set_auth_token(token, key)
+            self.logged_successfully()
+        else:
+            self.loginwindow = LoginWindow(self)
         self.undo_settings(None)
 
     # Performs initialization of some gui elements storing them in the class
@@ -191,16 +197,29 @@ class GogTuxGUI:
     def key_pressed(self, widget, data):
         if data.keyval == gtk.keysyms.Escape:
             self.rightpanel.hide()
+
+    def do_logout(self, widget):
+        del(self.settings["token"])
+        del(self.settings["key"])
+        self.store_settings()
+        gtk.main_quit()
     
     def login_callback(self):
         if self.loginwindow.result == "Success": #we logged in successfully
-            self.window.show()
+            if self.loginwindow.remember:
+                self.settings["token"] = self.connection.auth_token.key
+                self.settings["key"] = self.connection.auth_token.secret
+                self.store_settings()
             self.loginwindow.loginglade.get_widget("logindialog").destroy()
-            self.islogged = True
-            self.profile_update()
+            self.logged_successfully()
         else: #we failed the login process
             self.loginwindow.loginglade.get_widget("okbutton").set_sensitive(True)
             self.show_error(self.loginwindow.result)
+
+    def logged_successfully(self):
+        self.window.show()
+        self.islogged = True
+        self.profile_update()
 
     def profile_update(self):
         try:
@@ -270,7 +289,6 @@ class GogTuxGUI:
         self.installpathentry.set_text(self.settings["install_path"])
         self.virtualdesktopcheck.set_active(self.settings["use_virtual_desktop"] == "True")
         self.profileintervalentry.set_text(str(self.settings["profile_update"]))
-        pass
 
     def store_settings(self):
         path = os.path.join(os.getenv("HOME"),".gog-tux")
@@ -283,9 +301,21 @@ class GogTuxGUI:
         parser.set(section,"install_path", self.settings["install_path"])
         parser.set(section,"use_virtual_desktop", self.settings["use_virtual_desktop"])
         parser.set(section,"profile_update", self.settings["profile_update"])
+        if "token" in self.settings and "key" in self.settings:
+            parser.set(section,"token", self.settings["token"])
+            parser.set(section,"key", self.settings["key"])
         f = open(configfile,'w+')
         parser.write(f)
         f.close()
+
+    def check_cookies(self):
+        if "token" in self.settings and "key" in self.settings:
+            return True
+        else:
+            return False
+
+    def obtain_cookies(self):
+        return (self.settings["token"], self.settings["key"])
 
     def obtain_default_settings(self):
         sets = {}
@@ -341,10 +371,9 @@ class LoginWindow:
         self.loginglade = gtk.glade.XML(os.path.join(package_directory, "login.glade"))
         loginwin = self.loginglade.get_widget("logindialog")
         signals = { "on_cancelbutton_activated" : self.close,
-                    "on_cancelbutton_clicked" : self.close,
                     "on_logindialog_close" : self.close,
-                    "on_okbutton_activated" : self.do_login,
-                    "on_okbutton_clicked" : self.do_login }
+                    "on_okbutton_activated" : self.do_login }
+        loginwin.connect("delete-event", self.close)
         self.loginglade.signal_autoconnect(signals)
         loginwin.show()
         self.parent = parent
@@ -355,6 +384,7 @@ class LoginWindow:
     def do_login(self, widget):
         email = self.loginglade.get_widget("emailtext").get_text().strip()
         password = self.loginglade.get_widget("passwordtext").get_text().strip()
+        self.remember = self.loginglade.get_widget("remembercheckbox").get_active()
         if not email or not password:
             self.parent.show_error("Please fill in all the fields")
             return
