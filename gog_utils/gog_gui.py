@@ -15,7 +15,7 @@ import subprocess
 import gog_db
 import gol_connection as site_conn
 
-version = "0.1.4"
+version = "0.1.9"
 author = "Morgawr"
 email = "morgawr@gmail.com"
 package_directory = os.path.dirname(os.path.abspath(__file__))
@@ -89,6 +89,7 @@ class GogTuxGUI:
         self.privatenotelabel = self.wTree.get_widget("privatenotelabel")
         self.profilepic = self.wTree.get_widget("profilepic")
         self.installpathentry = self.wTree.get_widget("installpathentry")
+        self.virtualresentry = self.wTree.get_widget("resolutionentry")
         self.virtualdesktopcheck = self.wTree.get_widget("virtualdesktopcheck")
         self.profileintervalentry = self.wTree.get_widget("profileintervalentry")
         self.launchbutton = self.wTree.get_widget("launchbutton")
@@ -160,7 +161,39 @@ class GogTuxGUI:
     # because it's not installed yet, else this button would be
     # disabled
     def installbutton_activated(self, widget, data=None):
-        installwindow = ExternalOutputWindow(self,self.selected_game) 
+        if self.game_data[self.selected_game]["message"] != None:
+            self.show_warning(self.game_data[self.selected_game]["message"])
+        setup_file = None
+        yesno = gtk.MessageDialog(None, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_QUESTION,
+                                  gtk.BUTTONS_YES_NO, "Do you want to use an already downloaded setup file?")
+        resp = yesno.run()
+        yesno.destroy()
+        if resp == gtk.RESPONSE_YES:
+            # we need to create a filter for the .exe files so we don't choose a wrong file
+            setupfilter = gtk.FileFilter()
+            setupfilter.set_name("GoG installer")
+            setupfilter.add_pattern("setup_*.exe")
+            chooser = gtk.FileChooserDialog(title="Setup executable", action=gtk.FILE_CHOOSER_ACTION_OPEN,
+                                            buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+            chooser.set_default_response(gtk.RESPONSE_OK)
+            chooser.add_filter(setupfilter)
+            resp = chooser.run()
+            if resp == gtk.RESPONSE_OK:
+                setup_file = chooser.get_filename()
+                chooser.destroy()
+            else:
+                chooser.destroy()
+                return
+        chooser = gtk.FileChooserDialog(title="Install directory", action=gtk.FILE_CHOOSER_ACTION_CREATE_FOLDER,
+                                        buttons=(gtk.STOCK_CANCEL,gtk.RESPONSE_CANCEL,gtk.STOCK_OPEN,gtk.RESPONSE_OK))
+        chooser.set_current_folder(self.settings["install_path"])
+        chooser.set_current_name(self.selected_game)
+        chooser.set_default_response(gtk.RESPONSE_OK)
+        resp = chooser.run()
+        if resp == gtk.RESPONSE_OK:
+            path = chooser.get_filename()
+            installwindow = ExternalOutputWindow(self,self.selected_game, True, path, setup_file)
+        chooser.destroy()
 
     # We know the selected game is from the installed games list
     # else you wouldn't be able to launch it.
@@ -260,6 +293,12 @@ class GogTuxGUI:
         md.run()
         md.destroy()
 
+    def show_warning(self, warning):
+        md = gtk.MessageDialog(None, gtk.DIALOG_DESTROY_WITH_PARENT,
+                               gtk.MESSAGE_WARNING, gtk.BUTTONS_CLOSE, warning)
+        md.run()
+        md.destroy()
+
     def main(self):
         gtk.main()
 
@@ -281,6 +320,7 @@ class GogTuxGUI:
     def save_settings(self, widget):
         self.settings["install_path"] = self.installpathentry.get_text()
         self.settings["use_virtual_desktop"] = str(self.virtualdesktopcheck.get_active())
+        self.settings["virtual_resolution"] = self.virtualresentry.get_text()
         self.settings["profile_update"] = self.profileintervalentry.get_text()
         self.store_settings()
 
@@ -288,6 +328,7 @@ class GogTuxGUI:
     def undo_settings(self, widget):
         self.installpathentry.set_text(self.settings["install_path"])
         self.virtualdesktopcheck.set_active(self.settings["use_virtual_desktop"] == "True")
+        self.virtualresentry.set_text(self.settings["virtual_resolution"])
         self.profileintervalentry.set_text(str(self.settings["profile_update"]))
 
     def store_settings(self):
@@ -300,6 +341,7 @@ class GogTuxGUI:
         parser.add_section(section)
         parser.set(section,"install_path", self.settings["install_path"])
         parser.set(section,"use_virtual_desktop", self.settings["use_virtual_desktop"])
+        parser.set(section,"virtual_resolution", self.settings["virtual_resolution"])
         parser.set(section,"profile_update", self.settings["profile_update"])
         if "token" in self.settings and "key" in self.settings:
             parser.set(section,"token", self.settings["token"])
@@ -322,6 +364,7 @@ class GogTuxGUI:
         sets["install_path"] = os.path.join(os.getenv("HOME"),"games","gog")
         sets["use_virtual_desktop"] = False
         sets["profile_update"] = 120
+        sets["virtual_resolution"] = "800x600"
         return sets
 
     def load_settings(self, conf):
@@ -372,7 +415,9 @@ class LoginWindow:
         loginwin = self.loginglade.get_widget("logindialog")
         signals = { "on_cancelbutton_clicked" : self.close,
                     "on_logindialog_close" : self.close,
-                    "on_okbutton_clicked" : self.do_login }
+                    "on_okbutton_clicked" : self.do_login,
+                    "on_passwordtext_activated" : self.do_login,
+                    "on_emailtext_activated" : self.do_login }
         loginwin.connect("delete-event", self.close)
         self.loginglade.signal_autoconnect(signals)
         loginwin.show()
@@ -406,7 +451,7 @@ class ExternalOutputWindow:
     working = True
     process = None
     
-    def __init__(self, parent, game_id, install=True, path=None):
+    def __init__(self, parent, game_id, install=True, path=None, installer=None):
         self.glade = gtk.glade.XML(os.path.join(package_directory, "externalwindow.glade"))
         self.window = self.glade.get_widget("externalwindow")
         self.textview = self.glade.get_widget("outputview")
@@ -425,7 +470,7 @@ class ExternalOutputWindow:
         self.game_id = game_id
         if install:
             self.window.set_title("Installing "+game_id)
-            self.launch_install(game_id, path)
+            self.launch_install(game_id, path, installer)
         else:
             self.window.set_title("Uninstalling "+game_id)
             self.button.set_label("Ok")
@@ -446,7 +491,7 @@ class ExternalOutputWindow:
 
     def __threaded_execute(self, command, pipe):
         self.working = True
-        gobject.io_add_watch(pipe.stdout, gobject.IO_IN, self.read_output)
+        gobject.io_add_watch(pipe.stdout, gobject.IO_IN | gobject.IO_HUP, self.read_output)
         pipe.stdin.write(command)
         pipe.stdin.flush()
         pipe.wait()
@@ -456,13 +501,17 @@ class ExternalOutputWindow:
         self.button.set_sensitive(True)
         self.spinner.stop()
 
-    def launch_install(self, game_id, path):
-        # Let's assume path is None since we haven't implemented this yet
+    def launch_install(self, game_id, path, installer):
         self.process = command = subprocess.Popen(["sh"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         token = self.parent.connection.auth_token.key
         secret = self.parent.connection.auth_token.secret
-        # this needs to be fixed TODO
-        cmd = "gog-installer --secret="+secret+" --token="+token+" "+game_id+"\nexit\n"
+        # If possible, I'd love this to be more elegant but so far it works
+        cmd = "gog-installer --secret="+secret+" --token="+token
+        if path != None:
+            cmd += " --install-path="+path
+        if installer != None:
+            cmd += " --setup="+installer
+        cmd += " "+game_id+"\nexit\n"
         thread = threading.Thread(target=self.__threaded_execute, args=(cmd, command))
         thread.start()
 
