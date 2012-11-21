@@ -1,0 +1,14 @@
+#format is game_id = url
+#for games without metacritic page, use value NIL for the url
+back_to_the_future_the_game = back-to-the-future-the-game
+beneath_a_steel_sky = NIL
+conquest_of_the_new_world = conquest-of-the-new-world
+darklands = NIL
+dragonsphere = NIL
+lure_of_the_temptress = NIL
+#the Phantasmagoria Stagefright is compilation of both games, so don't include it here
+phantasmagoria = NIL
+teenagent = NIL
+tyrian_2000 = tyrian-2000
+ultima_4 = NIL
+worlds_of_ultima_the_savage_empire = NIL
