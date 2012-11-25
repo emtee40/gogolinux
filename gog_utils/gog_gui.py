@@ -1,5 +1,4 @@
 
-import sys
 import os
 import pygtk
 pygtk.require("2.0")
@@ -7,11 +6,9 @@ import gtk
 import gobject
 import gtk.glade
 import threading
-import time
 import data_handle
 import urllib2
 import subprocess
-import shutil
 import signal
 
 import gog_db
@@ -24,7 +21,7 @@ from version import email
 package_directory = os.path.dirname(os.path.abspath(__file__))
 dbpath = os.path.join(os.getenv("HOME"), ".gog-tux", "db.json")
 gobject.threads_init()
-icon = gtk.gdk.pixbuf_new_from_file(os.path.join(package_directory,"imgdata","gog-tux-icon.svg"))
+icon = gtk.gdk.pixbuf_new_from_file(os.path.join(package_directory, "imgdata", "gog-tux-icon.svg"))
 
 class GogTuxGUI:
     
@@ -204,7 +201,7 @@ class GogTuxGUI:
         resp = chooser.run()
         if resp == gtk.RESPONSE_OK:
             path = chooser.get_filename()
-            installwindow = ExternalOutputWindow(self,self.selected_game, True, path, setup_file, self.have_beta_access == "True")
+            ExternalOutputWindow(self,self.selected_game, True, path, setup_file, self.have_beta_access == "True")
         chooser.destroy()
 
     # We know the selected game is from the installed games list
@@ -222,7 +219,7 @@ class GogTuxGUI:
         resp = yesno.run()
         yesno.destroy()
         if resp == gtk.RESPONSE_YES:        
-            uninstallwindow = ExternalOutputWindow(self, self.selected_game, False, beta=(self.have_beta_access == "True"))
+            ExternalOutputWindow(self, self.selected_game, False, beta=(self.have_beta_access == "True"))
 
     # Shows the game card of the selected game. 
     # If the game is currently installed then it lets the user uninstall it or launch it
