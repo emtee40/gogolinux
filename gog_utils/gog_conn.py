@@ -145,7 +145,7 @@ class GogConnection:
         for installer_data in installers:
             installer_id = installer_data["id"]
             # We need to replace , with . for decimal places
-            installer_size = installer_data["sizeMB"].replace(',', '.')
+            installer_size = installer_data["size"].replace(',', '.')
             downloader = "%s/%s/%s/" % (self.game_installer,
                                         gameid, installer_id)
             local_path = installer_data["link"]
