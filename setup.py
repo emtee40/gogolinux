@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 import os
 from distutils.core import setup
-execfile('gog_utils/version.py')
+execfile = ('gog_utils/version.py')
 PREFIX = os.environ.get('PREFIX', '/usr/local')
 
 setup(name='gogonlinux',
-      version=version,
+      version='version',
       description='Client for GOG games on Linux',
-      author=author,
-      author_email=email,
+      author='author',
+      author_email='email',
       license='3-clause BSD',
       url='www.gogonlinux.com',
       packages=['gog_utils'],
